@@ -20,16 +20,16 @@ const Dice3D: React.FC<Dice3DProps> = ({ value, isRolling, onComplete }) => {
       // Correct Mapping based on initial CSS:
       // Face 1 (Front): Y=0
       // Face 2 (Left):  Y=90 (Rotate Cube Y+90 shows Left Face)
-      // Face 3 (Top):   X=-90 (Rotate Cube X-90 shows Top Face)
-      // Face 4 (Bottom): X=90 (Rotate Cube X+90 shows Bottom Face)
+      // Face 3 (Bottom): X=90 (Rotate Cube X+90 shows Bottom Face)
+      // Face 4 (Top):    X=-90 (Rotate Cube X-90 shows Top Face)
       // Face 5 (Right): Y=-90 (Rotate Cube Y-90 shows Right Face)
       // Face 6 (Back):  Y=180
       
       const targetRotations: Record<number, {x: number, y: number}> = {
         1: { x: 0, y: 0 },
         2: { x: 0, y: 90 }, 
-        3: { x: -90, y: 0 }, // Fixed: Top Face
-        4: { x: 90, y: 0 },  // Fixed: Bottom Face
+        3: { x: 90, y: 0 },   // Fixed: Face 3 is Bottom (rotateX(-90) in CSS), needs x:90 to show
+        4: { x: -90, y: 0 },  // Fixed: Face 4 is Top (rotateX(90) in CSS), needs x:-90 to show
         5: { x: 0, y: -90 },
         6: { x: 180, y: 0 }, 
       };

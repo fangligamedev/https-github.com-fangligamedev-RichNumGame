@@ -114,7 +114,6 @@ const App: React.FC = () => {
 
     if (type === 'success') {
       // Game Effect: Major Chord Arpeggio (C5 - E5 - G5 - C6)
-      // Happy "Level Up" sound
       const frequencies = [523.25, 659.25, 783.99, 1046.50];
       frequencies.forEach((freq, i) => {
         const osc = ctx.createOscillator();
@@ -135,7 +134,6 @@ const App: React.FC = () => {
 
     } else if (type === 'error') {
       // Game Effect: Cartoon "Fail" slide
-      // Sawtooth wave sliding down quickly
       const osc = ctx.createOscillator();
       const gain = ctx.createGain();
       osc.connect(gain);
@@ -285,22 +283,8 @@ const App: React.FC = () => {
     if (!gameStarted) return;
     if (playersRef.current.length === 0) return;
 
-    // Use REF to get current player to avoid re-triggering this effect when 'players' state updates (e.g. money change, movement)
-    // This fixes the bug where AI would roll repeatedly while moving or while modal is open.
     const currentPlayer = playersRef.current[activePlayerIndex];
     if (!currentPlayer) return;
-
-    // Announce turn
-    if (pendingDiceStep === null && !isDiceRolling && !showMathModal && !showMistakeModal && !showSettings) {
-       // Only announce if we are truly waiting for start of turn
-       // We skip this check inside the effect mostly, but visual logs handle it.
-    }
-
-    // Reset dice state at start of turn (if not holding a result)
-    if (!isDiceRolling && pendingDiceStep === null && diceValue !== null) {
-       // Keep dice visible for a moment then clear? Or verify logic. 
-       // Currently dice stays visible until next roll triggers.
-    }
 
     // Check for Bankruptcy / Skip Turn
     if (currentPlayer.isBankrupt) {
@@ -316,18 +300,14 @@ const App: React.FC = () => {
        return () => clearTimeout(timer);
     }
 
-    // Only initiate AI turn if it is indeed an AI player
-    // AND we are not currently showing a modal (though modal shouldn't be open at start of turn usually)
-    // AND we are not reviewing mistakes
-    // AND we haven't already rolled (pendingDiceStep)
+    // AI Turn Trigger
     if (currentPlayer.isAi && !showMistakeModal && !showMathModal && !showSettings && pendingDiceStep === null && !isDiceRolling) {
       const timer = setTimeout(() => {
         handleAiTurnFlow(currentPlayer.id);
       }, 1500);
       return () => clearTimeout(timer);
     } 
-    // Human turn waits for interaction (Roll Dice button)
-  }, [activePlayerIndex, gameStarted, showMistakeModal, showMathModal, showSettings, pendingDiceStep, isDiceRolling]); // REMOVED 'players' from dependency to prevent loop
+  }, [activePlayerIndex, gameStarted, showMistakeModal, showMathModal, showSettings, pendingDiceStep, isDiceRolling]); 
 
   // --- Setup Games ---
 
@@ -342,14 +322,14 @@ const App: React.FC = () => {
     else if (mode === 'P_VS_P_VS_AI') newPlayers = [p1, p2, ai];
 
     setPlayers(newPlayers);
-    setBoard(GAME_BOARD); // Reset board ownership
+    setBoard(GAME_BOARD); 
     setLogs([]);
     setActivePlayerIndex(0);
     setGameStarted(true);
     setDiceValue(null);
     setPendingDiceStep(null);
     
-    initAudio(); // Initialize audio context on click
+    initAudio(); 
     addLog("🎮 游戏开始！由你来掌管所有人的财务计算。", "success");
     playSound('success');
   };
@@ -358,7 +338,6 @@ const App: React.FC = () => {
 
   const addLog = (message: string, type: 'info' | 'success' | 'danger' | 'warning' = 'info') => {
     setLogs(prev => [...prev, { message, type }]);
-    // Trigger TTS for every log
     speak(message);
   };
 
@@ -371,12 +350,10 @@ const App: React.FC = () => {
   const addVisualEffect = (position: number, text: string, type: VisualEffect['type']) => {
     const id = Date.now() + Math.random();
     setVisualEffects(prev => [...prev, { id, position, text, type }]);
-    // Auto remove after animation
     setTimeout(() => {
       setVisualEffects(prev => prev.filter(e => e.id !== id));
     }, 2000);
     
-    // Play sound based on effect
     if (type === 'money-gain') playSound('coin');
     if (type === 'money-loss') playSound('click');
     if (type === 'upgrade') playSound('success');
@@ -391,15 +368,9 @@ const App: React.FC = () => {
     addVisualEffect(player.position, "破产!", "bankrupt");
     playSound('error');
     
-    // 1. Reset board properties owned by this player
     setBoard(prev => prev.map(t => t.owner === bankruptPlayerId ? { ...t, owner: null, level: 1 } : t));
-    
-    // 2. Mark player as bankrupt and clear their state
     updatePlayer(bankruptPlayerId, { isBankrupt: true, money: 0, properties: [] });
 
-    // 3. Check for Winner
-    // We check via ref to get the latest state including the one we just processed conceptually
-    // But since updatePlayer is async, we simulate the state check:
     const remainingPlayers = playersRef.current.filter(p => p.id !== bankruptPlayerId && !p.isBankrupt);
     
     if (remainingPlayers.length === 1) {
@@ -415,7 +386,6 @@ const App: React.FC = () => {
   const deductMoneyOrBankrupt = (playerId: string, amount: number, creditorId?: string) => {
     const player = getPlayerRef(playerId);
     if (player.money < amount) {
-        // Not enough money -> Bankrupt
         const remaining = player.money;
         if (creditorId && remaining > 0) {
             const creditor = getPlayerRef(creditorId);
@@ -431,8 +401,6 @@ const App: React.FC = () => {
         if (creditorId) {
             const creditor = getPlayerRef(creditorId);
             updatePlayer(creditorId, { money: creditor.money + amount });
-            // Visual effect for creditor usually at creditor's position, but they might be elsewhere. 
-            // For clarity, we show it at player's position (transfer) or creditor's. Let's show at creditor's pos if valid.
             if (creditor.position >= 0) {
                  addVisualEffect(creditor.position, `+${amount}`, "money-gain");
             }
@@ -441,19 +409,18 @@ const App: React.FC = () => {
   };
 
   // --- Question Generator Wrapper ---
-  // Now accepts a subject name to contextulize the question
+  // Now accepts 'DIV' operation
   const generateContextualQuestion = (
     subjectName: string,
     description: string, 
     baseVal: number, 
     changeVal: number, 
-    operation: 'ADD' | 'SUB' | 'MUL',
+    operation: 'ADD' | 'SUB' | 'MUL' | 'DIV',
     explanation: string
   ): MathQuestion => {
     let answer = 0;
     let questionText = "";
 
-    // If subject is "Me", use direct address, otherwise use Third Person
     const subject = subjectName.includes('我') ? '你' : subjectName;
 
     if (operation === 'ADD') {
@@ -464,20 +431,29 @@ const App: React.FC = () => {
       questionText = `${description}\n\n${subject} 现有: ¥${baseVal}\n花费: ¥${changeVal}\n\n请帮 ${subject} 计算剩余金额：`;
     } else if (operation === 'MUL') {
       answer = baseVal * changeVal;
-      questionText = `${description}\n\n基础租金: ¥${baseVal}\n倍数: ${changeVal}倍\n\n请帮 ${subject} 计算应付租金：`;
+      questionText = `${description}\n\n数量: ${changeVal}\n单价/基数: ¥${baseVal}\n\n请帮 ${subject} 计算总数：`;
+    } else if (operation === 'DIV') {
+      // For division, baseVal is usually the Total, changeVal is the divisor (groups)
+      answer = Math.floor(baseVal / changeVal);
+      questionText = `${description}\n\n总金额/总量: ¥${baseVal}\n分配份数: ${changeVal}\n\n请帮 ${subject} 计算每份是多少：`;
     }
 
     // Generate distractors
     const options = new Set<number>();
     options.add(answer);
     while (options.size < 4) {
-      const diff = Math.random() > 0.5 ? 10 : 100;
+      const diff = Math.random() > 0.5 ? 10 : 2;
       const sign = Math.random() > 0.5 ? 1 : -1;
-      const val = answer + (Math.floor(Math.random() * 5) + 1) * diff * sign;
-      const valSmall = answer + (Math.floor(Math.random() * 20) - 10);
+      
+      // Smart distractors based on type
+      let val = 0;
+      if (operation === 'MUL' || operation === 'DIV') {
+          val = answer + (Math.floor(Math.random() * 5) + 1) * sign; // Close numbers
+      } else {
+          val = answer + (Math.floor(Math.random() * 5) + 1) * 10 * sign; // Close tens
+      }
       
       if (val > 0 && val !== answer) options.add(val);
-      else if (valSmall > 0 && valSmall !== answer) options.add(valSmall);
     }
 
     return {
@@ -485,7 +461,7 @@ const App: React.FC = () => {
       answer: answer,
       options: Array.from(options).sort(() => Math.random() - 0.5),
       type: operation,
-      difficulty: 1,
+      difficulty: (operation === 'MUL' || operation === 'DIV') ? 2 : 1,
       explanation: explanation
     };
   };
@@ -499,27 +475,53 @@ const App: React.FC = () => {
     const ai = getPlayerRef(aiId);
     
     if (ai.isJailed) {
-      addLog(`${ai.name} 在休息站，跳过一回合。`, "warning");
-      updatePlayer(aiId, { isJailed: false });
-      endTurn();
+      addLog(`${ai.name} 在休息站，必须回答数学题才能离开！`, "warning");
+      
+      // AI "attempts" to answer
+      const q = generateContextualQuestion(
+          ai.name,
+          `${ai.name} 想要离开休息站，必须把 120 分钟休息时间平均分成 4 段。`,
+          120,
+          4,
+          'DIV',
+          `120 ÷ 4 = 30`
+      );
+
+      triggerMathChallenge(q, () => {
+         addLog(`✅ ${ai.name} 算对了！解除休息状态。`, "success");
+         updatePlayer(aiId, { isJailed: false });
+         setTimeout(triggerDiceRoll, 500);
+      }, () => {
+         addLog(`❌ ${ai.name} 也没算出来，下回合继续休息。`, "danger");
+         endTurn();
+      });
       return;
     }
 
-    // Trigger Dice Animation Sequence
     triggerDiceRoll();
   };
 
   // Human Turn Sequence (Button Click)
   const handleHumanTurn = async () => {
     const currentPlayer = players[activePlayerIndex];
-    initAudio(); // Ensure audio context is ready on interaction
+    initAudio(); 
 
     if (currentPlayer.isJailed) {
-      addLog(`${currentPlayer.name} 在休息站，必须回答问题才能离开！`, "warning");
-      triggerMathChallenge(null, () => {
+      addLog(`${currentPlayer.name} 在休息站，必须做对除法题才能离开！`, "warning");
+      
+      // Jail Question is now Division
+      const q = generateContextualQuestion(
+          currentPlayer.name,
+          "管理员：想要离开，请把 240 元罚款平均分成 6 份缴纳。",
+          240,
+          6,
+          'DIV',
+          `240 ÷ 6 = 40`
+      );
+
+      triggerMathChallenge(q, () => {
         addLog("✅ 回答正确！解除休息状态。", "success");
         updatePlayer(currentPlayer.id, { isJailed: false });
-        // After jail break, roll immediately
         triggerDiceRoll();
       }, () => {
         addLog("❌ 回答错误，下回合继续休息。", "danger");
@@ -532,32 +534,21 @@ const App: React.FC = () => {
   };
 
   const triggerDiceRoll = () => {
-    playSound('dice'); // Changed from 'turn' to 'dice'
-    // Determine the result IMMEDIATELY so the 3D dice knows where to stop
+    playSound('dice'); 
     const steps = rollDice();
     setDiceValue(steps);
     setPendingDiceStep(steps);
-    
-    // Start the animation
     setIsDiceRolling(true);
-    
-    // Note: We don't need a timeout here to calculate the value anymore.
-    // The Dice3D component handles the duration (2000ms) and calls onDiceAnimationComplete.
   };
 
   const onDiceAnimationComplete = () => {
-    // Animation finished, stop rolling state
     setIsDiceRolling(false);
-
-    // Only proceed if we have a pending step (avoid double triggering)
     if (pendingDiceStep !== null) {
       const currentPlayer = getPlayerRef(playersRef.current[activePlayerIndex].id);
       addLog(`${currentPlayer.name} 掷出了 ${pendingDiceStep} 点！`, "info");
       
-      // Delay slightly to let user see the dice result before moving
       setTimeout(() => {
           movePlayer(currentPlayer.id, pendingDiceStep);
-          // Do NOT clear diceValue here, let it persist until endTurn
       }, 500);
     }
   };
@@ -565,7 +556,6 @@ const App: React.FC = () => {
   const movePlayer = async (playerId: string, steps: number) => {
     let passedStart = false;
 
-    // Step-by-step animation
     for (let i = 0; i < steps; i++) {
         const currentP = getPlayerRef(playerId);
         let nextPos = currentP.position + 1;
@@ -576,13 +566,12 @@ const App: React.FC = () => {
         }
 
         updatePlayer(playerId, { position: nextPos });
-        playSound('click'); // Click sound per step
+        playSound('click'); 
         await new Promise(r => setTimeout(r, 300));
     }
     
     const finalPlayer = getPlayerRef(playerId);
     
-    // Pass Start Logic - EVERYONE gets math challenge now
     if (passedStart) {
         const q = generateContextualQuestion(
           finalPlayer.name,
@@ -596,16 +585,13 @@ const App: React.FC = () => {
         const isUser = playerId === 'P1';
 
         triggerMathChallenge(q, () => {
-          // Success (Both User and AI)
           addLog(`${finalPlayer.name} 领取工资 ¥200`, "success");
           updatePlayer(playerId, { money: finalPlayer.money + 200 });
-          addVisualEffect(0, "+200", "money-gain"); // 0 is Start
+          addVisualEffect(0, "+200", "money-gain"); 
           setTimeout(() => processTile(playerId, finalPlayer.position), 500);
         }, () => {
-          // Failure
           if (isUser) {
              addLog("❌ 算错了！银行柜员拒绝发放工资。", "danger");
-             // User Penalty: No money
              setTimeout(() => processTile(playerId, finalPlayer.position), 500);
           } else {
              addLog(`❌ 你算错了！但是 ${finalPlayer.name} 自己算对并领了工资。`, "warning");
@@ -649,15 +635,10 @@ const App: React.FC = () => {
     // 1. Unowned -> Buy?
     if (tile.owner === null || tile.owner === undefined) {
       if (tile.price && player.money >= tile.price) {
-        
-        // --- FIX: AI Logic ---
-        // Removed the random 20% skip. AI now always attempts to buy if they have funds.
         if (player.isAi) {
-             // Only skip if critically low (optional safety, currently greedy)
-             // We want the AI to be aggressive in this game.
+             // AI Logic
         }
 
-        // EVERYONE gets a math challenge to buy
         const q = generateContextualQuestion(
           player.name,
           `${player.name} 想要购买 ${tile.name}。`,
@@ -692,11 +673,9 @@ const App: React.FC = () => {
 
       if (currentLevel < 3) {
         if (player.money >= upgradeCost) {
-            // AI Decision - Relaxed constraint
-            // Fix: AI now upgrades if they have just enough money + buffer of 100
             if (player.isAi && player.money < upgradeCost + 100) {
                 addLog(`${player.name} 决定保留资金，暂不升级。`, "info");
-                endTurn(); // AI saves money
+                endTurn(); 
                 return;
             }
             
@@ -750,7 +729,7 @@ const App: React.FC = () => {
       const payFlow = () => {
            let q: MathQuestion;
            // If high level, ask multiplication first?
-           if (level > 1 && Math.random() > 0.5) {
+           if (level > 1) {
               q = generateContextualQuestion(
                  player.name,
                  `${player.name} 需支付租金给 ${ownerName}。\n基础租金 ¥${baseRent}，等级 ${level}级。`,
@@ -775,11 +754,9 @@ const App: React.FC = () => {
                endTurn();
            }, () => {
                if (isUser) {
-                   // For rent (negative thing), if user fails, we force retry
                    addLog("❌ 必须算对才能继续！再试一次。", "danger");
                    setTimeout(payFlow, 1000); 
                } else {
-                   // For AI/P2, if User fails to help, AI pays anyway.
                    addLog(`❌ 你算错了！${player.name} 自己支付了租金。`, "warning");
                    addLog("📉 惩罚：你的连胜中断了！", "danger");
                    deductMoneyOrBankrupt(playerId, totalRent, tile.owner!);
@@ -795,8 +772,6 @@ const App: React.FC = () => {
   const buyProperty = (playerId: string, tile: Tile) => {
     const player = getPlayerRef(playerId);
     if (!tile.price) return;
-    
-    // Check bankrupt safety though usually checked before
     if (player.money < tile.price) return;
 
     updatePlayer(playerId, { 
@@ -829,129 +804,150 @@ const App: React.FC = () => {
     endTurn();
   };
 
+  // UPDATED: Handle Chance Tile with more MUL/DIV
   const handleChanceTile = (playerId: string) => {
     const player = getPlayerRef(playerId);
     const isUser = playerId === 'P1';
     
+    // Scenarios including ADD, SUB, MUL, DIV
     const events = [
-      { text: "捡到了钱包！", amount: 100 },
-      { text: "请客吃小笼包。", amount: -50 },
-      { text: "中了大奖！", amount: 200 },
-      { text: "买书学习。", amount: -30 },
+      { text: "捡到了钱包！", type: 'ADD', val1: player.money, val2: 100, isGain: true, desc: "收入" },
+      { text: "卖掉旧书 (5本 x ¥20)", type: 'MUL', val1: 20, val2: 5, isGain: true, desc: "收入" }, // 100
+      { text: "帮邻居遛狗 (3天 x ¥50)", type: 'MUL', val1: 50, val2: 3, isGain: true, desc: "收入" }, // 150
+      { text: "平分奖金 ¥200 给4个朋友", type: 'DIV', val1: 200, val2: 4, isGain: true, desc: "每人分得" }, // 50 (Gain for player context? Let's say player gets one share)
+      { text: "请客吃冰淇淋 (4个 x ¥15)", type: 'MUL', val1: 15, val2: 4, isGain: false, desc: "支付" }, // 60
+      { text: "不小心打碎花瓶", type: 'SUB', val1: player.money, val2: 80, isGain: false, desc: "赔偿" },
     ];
+
     const evt = events[Math.floor(Math.random() * events.length)];
-    const isGood = evt.amount > 0;
-    
-    const op = isGood ? 'ADD' : 'SUB';
-    const absAmount = Math.abs(evt.amount);
-    
-    const q = generateContextualQuestion(
-        player.name,
-        `运气卡：${player.name} ${evt.text}`,
-        player.money,
-        absAmount,
-        op,
-        op === 'ADD' ? `${player.money} + ${absAmount} = ${player.money + absAmount}` : `${player.money} - ${absAmount} = ${player.money - absAmount}`
-    );
+    let calculatedAmount = 0;
+    let op = evt.type as 'ADD' | 'SUB' | 'MUL' | 'DIV';
+    let q: MathQuestion;
+
+    if (evt.type === 'MUL') {
+        calculatedAmount = evt.val1 * evt.val2;
+        q = generateContextualQuestion(player.name, `运气卡：${evt.text}`, evt.val1, evt.val2, 'MUL', `${evt.val1} x ${evt.val2} = ${calculatedAmount}`);
+    } else if (evt.type === 'DIV') {
+        calculatedAmount = Math.floor(evt.val1 / evt.val2);
+        q = generateContextualQuestion(player.name, `运气卡：${evt.text}`, evt.val1, evt.val2, 'DIV', `${evt.val1} ÷ ${evt.val2} = ${calculatedAmount}`);
+    } else {
+        // Standard ADD/SUB
+        calculatedAmount = evt.val2;
+        op = evt.isGain ? 'ADD' : 'SUB';
+        q = generateContextualQuestion(
+            player.name, 
+            `运气卡：${evt.text}`, 
+            player.money, 
+            calculatedAmount, 
+            op, 
+            op === 'ADD' ? `${player.money} + ${calculatedAmount} = ${player.money + calculatedAmount}` : `${player.money} - ${calculatedAmount} = ${player.money - calculatedAmount}`
+        );
+    }
     
     triggerMathChallenge(q, () => {
-        if (isGood) {
-            updatePlayer(playerId, { money: player.money + evt.amount });
-            addVisualEffect(player.position, `+${evt.amount}`, "money-gain");
+        if (evt.isGain) {
+            updatePlayer(playerId, { money: player.money + calculatedAmount });
+            addVisualEffect(player.position, `+${calculatedAmount}`, "money-gain");
         } else {
-            deductMoneyOrBankrupt(playerId, absAmount);
+            deductMoneyOrBankrupt(playerId, calculatedAmount);
         }
-        if (!getPlayerRef(playerId).isBankrupt) { // Only log success if not bankrupt during deduction
-             addLog(`${evt.text} (¥${evt.amount})`, isGood ? "success" : "warning");
+        if (!getPlayerRef(playerId).isBankrupt) {
+             addLog(`${evt.text} (¥${calculatedAmount})`, evt.isGain ? "success" : "warning");
         }
         endTurn();
     }, () => {
          // Failure Logic
          if (isUser) {
-             if (isGood) {
-                 addLog("❌ 算错了，奖金飞走了！(机会取消)", "danger");
+             if (evt.isGain) {
+                 addLog("❌ 算错了，奖励飞走了！", "danger");
                  endTurn();
              } else {
                  addLog("❌ 算错了，还是要扣钱！", "danger");
-                 deductMoneyOrBankrupt(playerId, absAmount);
+                 deductMoneyOrBankrupt(playerId, calculatedAmount);
                  endTurn();
              }
          } else {
-             // For Opponent
              addLog(`❌ 你算错了！${player.name} 自己处理了。`, "warning");
              addLog("📉 惩罚：你的连胜中断了！", "danger");
-             if (isGood) {
-                 updatePlayer(playerId, { money: player.money + evt.amount });
-                 addVisualEffect(player.position, `+${evt.amount}`, "money-gain");
+             if (evt.isGain) {
+                 updatePlayer(playerId, { money: player.money + calculatedAmount });
+                 addVisualEffect(player.position, `+${calculatedAmount}`, "money-gain");
              } else {
-                 deductMoneyOrBankrupt(playerId, absAmount);
+                 deductMoneyOrBankrupt(playerId, calculatedAmount);
              }
              endTurn();
          }
     });
   };
 
+  // UPDATED: Handle Bank Tile with specific logic
   const handleBankTile = (playerId: string) => {
     const player = getPlayerRef(playerId);
     const isUser = playerId === 'P1';
     let amount = 0;
     let text = "";
+    let q: MathQuestion;
     
-    if (player.position === 6) { // People's Bank
-       amount = 150;
-       text = "银行理财收益";
-    } else if (player.position === 14) { // Tax Bureau
-       amount = -100;
-       text = "缴纳税款";
-    }
-
-    const isGood = amount > 0;
-    const op = isGood ? 'ADD' : 'SUB';
-    const absAmount = Math.abs(amount);
-    
-    const q = generateContextualQuestion(
-        player.name,
-        `${player.name} ${text}`,
-        player.money,
-        absAmount,
-        op,
-        op === 'ADD' ? `${player.money} + ${absAmount} = ${player.money + absAmount}` : `${player.money} - ${absAmount} = ${player.money - absAmount}`
-    );
-    
-    triggerMathChallenge(q, () => {
-         if (isGood) {
-             updatePlayer(playerId, { money: player.money + amount });
-             addVisualEffect(player.position, `+${amount}`, "money-gain");
-         } else {
-             deductMoneyOrBankrupt(playerId, absAmount);
-         }
-         
-         if (!getPlayerRef(playerId).isBankrupt) {
-             addLog(`${text} ¥${amount}`, isGood ? "success" : "warning");
-         }
-         endTurn();
-     }, () => {
-         if (isUser) {
-             if (isGood) {
-                 addLog("❌ 算错了，收益被取消。", "danger");
-                 endTurn();
-             } else {
+    // Tax Bureau (Tile 24) -> Pay Tax based on Property Count (MUL)
+    if (player.position === 24) { 
+       const propertyCount = player.properties.length;
+       const taxPerProperty = 50;
+       
+       if (propertyCount > 0) {
+           amount = propertyCount * taxPerProperty; // Negative handled in logic
+           text = `缴纳房产税 (拥有${propertyCount}处 x ¥${taxPerProperty})`;
+           q = generateContextualQuestion(player.name, text, taxPerProperty, propertyCount, 'MUL', `${taxPerProperty} x ${propertyCount} = ${amount}`);
+       } else {
+           amount = 50;
+           text = "缴纳低保税 (无房产)";
+           q = generateContextualQuestion(player.name, text, player.money, amount, 'SUB', `${player.money} - ${amount} = ${player.money - amount}`);
+       }
+       
+       // Bank Logic Wrapper
+       triggerMathChallenge(q, () => {
+            deductMoneyOrBankrupt(playerId, amount);
+            addLog(`${text} (-¥${amount})`, "warning");
+            endTurn();
+       }, () => {
+            // Fail
+             if (isUser) {
                  addLog("❌ 算错了，税还是要交的。", "danger");
-                 deductMoneyOrBankrupt(playerId, absAmount);
-                 endTurn();
-             }
-         } else {
-             addLog(`❌ 你算错了！${player.name} 自己处理了。`, "warning");
-             addLog("📉 惩罚：你的连胜中断了！", "danger");
-             if (isGood) {
-                 updatePlayer(playerId, { money: player.money + amount });
-                 addVisualEffect(player.position, `+${amount}`, "money-gain");
+                 deductMoneyOrBankrupt(playerId, amount);
              } else {
-                 deductMoneyOrBankrupt(playerId, absAmount);
+                 addLog(`❌ 你算错了！${player.name} 自动交税了。`, "warning");
+                 deductMoneyOrBankrupt(playerId, amount);
              }
              endTurn();
-         }
-     });
+       });
+
+    } else if (player.position === 12) { 
+       // People's Bank (Tile 12) -> Interest (MUL)
+       // Logic: Interest = 3 months * 50
+       const months = 3;
+       const rate = 50;
+       amount = months * rate;
+       text = `银行利息收益 (${months}个月 x ¥${rate})`;
+       
+       q = generateContextualQuestion(player.name, text, rate, months, 'MUL', `${rate} x ${months} = ${amount}`);
+       
+       triggerMathChallenge(q, () => {
+             updatePlayer(playerId, { money: player.money + amount });
+             addVisualEffect(player.position, `+${amount}`, "money-gain");
+             addLog(`${text}`, "success");
+             endTurn();
+       }, () => {
+             if (isUser) {
+                 addLog("❌ 算错了，利息被没收。", "danger");
+             } else {
+                 addLog(`❌ 你算错了！${player.name} 领走了利息。`, "warning");
+                 updatePlayer(playerId, { money: player.money + amount });
+             }
+             endTurn();
+       });
+    } else {
+        // Fallback
+        endTurn();
+    }
   };
 
   const endTurn = () => {
