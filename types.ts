@@ -30,6 +30,13 @@ export interface Player {
   isAi: boolean; // Flag to identify if this player is a bot
 }
 
+export interface VisualEffect {
+  id: number;
+  position: number; // Tile index where effect happens
+  text: string;     // "+100", "Level Up!", "Sold!"
+  type: 'money-gain' | 'money-loss' | 'upgrade' | 'bankrupt' | 'buy';
+}
+
 export interface MathQuestion {
   question: string;
   answer: number;
@@ -37,6 +44,13 @@ export interface MathQuestion {
   type: 'ADD' | 'SUB' | 'MUL' | 'DIV';
   difficulty: number;
   explanation?: string;
+}
+
+export interface WrongAnswerLog {
+  id: string;
+  question: MathQuestion;
+  wrongOption: number;
+  timestamp: number;
 }
 
 export interface GameLog {

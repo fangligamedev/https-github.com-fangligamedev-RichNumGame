@@ -4,7 +4,7 @@ import { CheckCircle2, XCircle, Calculator, Brain } from 'lucide-react';
 
 interface MathChallengeProps {
   question: MathQuestion | null;
-  onAnswer: (isCorrect: boolean) => void;
+  onAnswer: (isCorrect: boolean, selectedOption?: number) => void;
   isLoading: boolean;
 }
 
@@ -35,7 +35,7 @@ const MathChallenge: React.FC<MathChallengeProps> = ({ question, onAnswer, isLoa
 
     // Delay closing to show feedback
     setTimeout(() => {
-      onAnswer(correct);
+      onAnswer(correct, option);
       // Reset internal state
       setShowResult(false);
       setSelectedOption(null);

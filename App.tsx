@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import GameBoard from './components/GameBoard';
 import MathChallenge from './components/MathChallenge';
-import { Player, Tile, TileType, MathQuestion, GameLog, MistakeRecord, Badge } from './types';
+import { Player, Tile, TileType, MathQuestion, GameLog, MistakeRecord, Badge, VisualEffect, WrongAnswerLog } from './types';
 import { GAME_BOARD, INITIAL_MONEY, INITIAL_BADGES, BOARD_SIZE } from './constants';
 import { generateMathQuestion } from './services/geminiService';
-import { Coins, Play, History, TrendingUp, AlertTriangle, Users, Bot, UserPlus, Skull } from 'lucide-react';
+import { Coins, History, AlertTriangle, Users, Bot, UserPlus, BookOpen, X, CheckCircle2, XCircle, Volume2, VolumeX, Settings, PlayCircle } from 'lucide-react';
 
 const App: React.FC = () => {
   // --- State ---
@@ -15,24 +15,230 @@ const App: React.FC = () => {
   const [board, setBoard] = useState<Tile[]>(GAME_BOARD);
   const [logs, setLogs] = useState<GameLog[]>([]);
   
+  // Audio State
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  
+  // Voice Settings State
+  const [showSettings, setShowSettings] = useState(false);
+  const [availableVoices, setAvailableVoices] = useState<SpeechSynthesisVoice[]>([]);
+  const [voiceConfig, setVoiceConfig] = useState({
+    voiceName: '', // Selected voice name
+    pitch: 1.0,
+    rate: 1.0
+  });
+
   // Animation State
+  const [visualEffects, setVisualEffects] = useState<VisualEffect[]>([]);
   const [upgradingTileId, setUpgradingTileId] = useState<number | null>(null);
-  const [isRolling, setIsRolling] = useState(false); // Visual state for AI rolling
+  
+  // 3D Dice State
+  const [diceValue, setDiceValue] = useState<number | null>(null);
+  const [isDiceRolling, setIsDiceRolling] = useState(false);
+  const [pendingDiceStep, setPendingDiceStep] = useState<number | null>(null);
   
   // Math Challenge State
   const [showMathModal, setShowMathModal] = useState(false);
   const [currentQuestion, setCurrentQuestion] = useState<MathQuestion | null>(null);
   const [isQuestionLoading, setIsQuestionLoading] = useState(false);
-  const [pendingAction, setPendingAction] = useState<((isCorrect: boolean) => void) | null>(null);
+  // Updated pendingAction signature to accept selectedOption
+  const [pendingAction, setPendingAction] = useState<((isCorrect: boolean, selectedOption?: number) => void) | null>(null);
   
-  // Stats
+  // Stats & Review
   const [badges, setBadges] = useState<Badge[]>(INITIAL_BADGES);
   const [streak, setStreak] = useState(0);
   const [mistakes, setMistakes] = useState<MistakeRecord[]>([]);
+  const [wrongAnswers, setWrongAnswers] = useState<WrongAnswerLog[]>([]); // Store detailed wrong answers
+  const [showMistakeModal, setShowMistakeModal] = useState(false); // UI state for review modal
 
   // Refs
   const logsEndRef = useRef<HTMLDivElement>(null);
   const playersRef = useRef(players); // Keep track of latest players state
+  const audioContextRef = useRef<AudioContext | null>(null);
+
+  // --- Audio Helpers ---
+  
+  // Initialize Audio Context
+  const initAudio = () => {
+    if (!audioContextRef.current) {
+      const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioContext) {
+        audioContextRef.current = new AudioContext();
+      }
+    }
+    if (audioContextRef.current?.state === 'suspended') {
+      audioContextRef.current.resume();
+    }
+  };
+
+  // Load Voices Logic
+  useEffect(() => {
+    const loadVoices = () => {
+      const voices = window.speechSynthesis.getVoices();
+      // Filter for Chinese voices, or all if none found (fallback)
+      const zhVoices = voices.filter(v => v.lang.includes('zh') || v.lang.includes('CN'));
+      
+      const uniqueVoices = zhVoices.length > 0 ? zhVoices : voices;
+      setAvailableVoices(uniqueVoices);
+
+      // Set default if not set
+      setVoiceConfig(prev => {
+        if (prev.voiceName) return prev; // Already set
+        
+        // Prioritize Ting-Ting specifically as per user request
+        const preferred = uniqueVoices.find(v => v.name.includes('Ting-Ting') || v.name.includes('婷婷')) 
+                       || uniqueVoices.find(v => v.name.includes('Google') || v.name.includes('Yaoyao'));
+        
+        return {
+          ...prev,
+          voiceName: preferred ? preferred.name : (uniqueVoices[0]?.name || '')
+        };
+      });
+    };
+
+    loadVoices();
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+    
+    return () => {
+      window.speechSynthesis.onvoiceschanged = null;
+    };
+  }, []);
+
+  // Play synthetic sound effects (Beeps/Boops)
+  const playSound = (type: 'success' | 'error' | 'click' | 'turn' | 'coin' | 'dice') => {
+    if (!soundEnabled) return;
+    initAudio();
+    const ctx = audioContextRef.current;
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+
+    if (type === 'success') {
+      // Game Effect: Major Chord Arpeggio (C5 - E5 - G5 - C6)
+      // Happy "Level Up" sound
+      const frequencies = [523.25, 659.25, 783.99, 1046.50];
+      frequencies.forEach((freq, i) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        
+        osc.type = 'sine'; // Smooth tone
+        osc.frequency.setValueAtTime(freq, now + i * 0.08);
+        
+        gain.gain.setValueAtTime(0, now + i * 0.08);
+        gain.gain.linearRampToValueAtTime(0.2, now + i * 0.08 + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + i * 0.08 + 0.3);
+        
+        osc.start(now + i * 0.08);
+        osc.stop(now + i * 0.08 + 0.3);
+      });
+
+    } else if (type === 'error') {
+      // Game Effect: Cartoon "Fail" slide
+      // Sawtooth wave sliding down quickly
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.type = 'sawtooth'; // Buzzer like
+      osc.frequency.setValueAtTime(300, now);
+      osc.frequency.exponentialRampToValueAtTime(50, now + 0.4); // Slide down pitch
+
+      gain.gain.setValueAtTime(0.15, now); // Slightly lower volume
+      gain.gain.linearRampToValueAtTime(0.01, now + 0.4);
+
+      osc.start(now);
+      osc.stop(now + 0.4);
+
+    } else if (type === 'coin') {
+      // High ping
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1200, now);
+      osc.frequency.exponentialRampToValueAtTime(2000, now + 0.1);
+      gain.gain.setValueAtTime(0.15, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.3);
+      osc.start(now);
+      osc.stop(now + 0.3);
+
+    } else if (type === 'turn') {
+      // Gentle pop
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(400, now);
+      gain.gain.setValueAtTime(0.1, now);
+      gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+      osc.start(now);
+      osc.stop(now + 0.1);
+
+    } else if (type === 'dice') {
+      // Fun "Zip/Whir" sound for rolling
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(300, now);
+      osc.frequency.exponentialRampToValueAtTime(800, now + 0.2); // Pitch slide up
+      
+      gain.gain.setValueAtTime(0.2, now);
+      gain.gain.linearRampToValueAtTime(0.01, now + 0.25);
+      
+      osc.start(now);
+      osc.stop(now + 0.25);
+    } else if (type === 'click') {
+        // Very short blip
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.setValueAtTime(600, now);
+        gain.gain.setValueAtTime(0.05, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+        osc.start(now);
+        osc.stop(now + 0.05);
+    }
+  };
+
+  // Text to Speech - Uses User Settings
+  const speak = (text: string, force = false) => {
+    if (!soundEnabled && !force) return;
+    if (!window.speechSynthesis) return;
+
+    window.speechSynthesis.cancel();
+
+    const cleanText = text.replace(/[\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F780}-\u{1F7FF}\u{1F800}-\u{1F8FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu, '');
+    
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    
+    // Use User Settings
+    const selectedVoice = availableVoices.find(v => v.name === voiceConfig.voiceName);
+    if (selectedVoice) {
+        utterance.voice = selectedVoice;
+    } else if (availableVoices.length > 0) {
+        utterance.voice = availableVoices[0]; // Fallback
+    }
+    
+    utterance.lang = 'zh-CN'; 
+    utterance.pitch = voiceConfig.pitch;
+    utterance.rate = voiceConfig.rate;
+
+    window.speechSynthesis.speak(utterance);
+  };
+
+  const testVoice = () => {
+    speak("你好，我是您的数学小助手。今天我们要一起去上海探险！", true);
+  };
 
   // --- Effects ---
 
@@ -56,16 +262,19 @@ const App: React.FC = () => {
       newBadges[0].unlocked = true;
       addLog("🏅 P1 解锁成就：第一桶金！", "success");
       badgeChanged = true;
+      playSound('success');
     }
     if (!newBadges[1].unlocked && streak >= 5) {
       newBadges[1].unlocked = true;
       addLog("🏅 解锁成就：速算小能手！", "success");
       badgeChanged = true;
+      playSound('success');
     }
     if (!newBadges[2].unlocked && p1.money >= 5000) {
       newBadges[2].unlocked = true;
       addLog("🏅 P1 解锁成就：上海首富！", "success");
       badgeChanged = true;
+      playSound('success');
     }
 
     if (badgeChanged) setBadges(newBadges);
@@ -73,35 +282,52 @@ const App: React.FC = () => {
 
   // Turn Orchestration
   useEffect(() => {
-    if (!gameStarted || players.length === 0) return;
+    if (!gameStarted) return;
+    if (playersRef.current.length === 0) return;
 
-    const currentPlayer = players[activePlayerIndex];
+    // Use REF to get current player to avoid re-triggering this effect when 'players' state updates (e.g. money change, movement)
+    // This fixes the bug where AI would roll repeatedly while moving or while modal is open.
+    const currentPlayer = playersRef.current[activePlayerIndex];
+    if (!currentPlayer) return;
+
+    // Announce turn
+    if (pendingDiceStep === null && !isDiceRolling && !showMathModal && !showMistakeModal && !showSettings) {
+       // Only announce if we are truly waiting for start of turn
+       // We skip this check inside the effect mostly, but visual logs handle it.
+    }
+
+    // Reset dice state at start of turn (if not holding a result)
+    if (!isDiceRolling && pendingDiceStep === null && diceValue !== null) {
+       // Keep dice visible for a moment then clear? Or verify logic. 
+       // Currently dice stays visible until next roll triggers.
+    }
 
     // Check for Bankruptcy / Skip Turn
     if (currentPlayer.isBankrupt) {
        // If current player is bankrupt, immediately move to next
-       const activePlayers = players.filter(p => !p.isBankrupt);
+       const activePlayers = playersRef.current.filter(p => !p.isBankrupt);
        if (activePlayers.length <= 1) {
-           // Game over is handled in bankruptcy trigger, but safety check here
            return;
        }
-       // Delay slightly to prevent infinite loop tightness if something is weird, 
-       // but effectively we just want to skip them.
+       
        const timer = setTimeout(() => {
          endTurn();
        }, 500);
        return () => clearTimeout(timer);
     }
 
-    if (currentPlayer.isAi) {
-      // AI Turn Logic
+    // Only initiate AI turn if it is indeed an AI player
+    // AND we are not currently showing a modal (though modal shouldn't be open at start of turn usually)
+    // AND we are not reviewing mistakes
+    // AND we haven't already rolled (pendingDiceStep)
+    if (currentPlayer.isAi && !showMistakeModal && !showMathModal && !showSettings && pendingDiceStep === null && !isDiceRolling) {
       const timer = setTimeout(() => {
         handleAiTurnFlow(currentPlayer.id);
       }, 1500);
       return () => clearTimeout(timer);
     } 
     // Human turn waits for interaction (Roll Dice button)
-  }, [activePlayerIndex, gameStarted, players]); // Dependency on players needed to detect bankruptcy state changes
+  }, [activePlayerIndex, gameStarted, showMistakeModal, showMathModal, showSettings, pendingDiceStep, isDiceRolling]); // REMOVED 'players' from dependency to prevent loop
 
   // --- Setup Games ---
 
@@ -120,13 +346,20 @@ const App: React.FC = () => {
     setLogs([]);
     setActivePlayerIndex(0);
     setGameStarted(true);
+    setDiceValue(null);
+    setPendingDiceStep(null);
+    
+    initAudio(); // Initialize audio context on click
     addLog("🎮 游戏开始！由你来掌管所有人的财务计算。", "success");
+    playSound('success');
   };
 
   // --- Helpers ---
 
   const addLog = (message: string, type: 'info' | 'success' | 'danger' | 'warning' = 'info') => {
     setLogs(prev => [...prev, { message, type }]);
+    // Trigger TTS for every log
+    speak(message);
   };
 
   const getPlayerRef = (id: string) => playersRef.current.find(p => p.id === id)!;
@@ -135,11 +368,28 @@ const App: React.FC = () => {
     setPlayers(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
   };
 
+  const addVisualEffect = (position: number, text: string, type: VisualEffect['type']) => {
+    const id = Date.now() + Math.random();
+    setVisualEffects(prev => [...prev, { id, position, text, type }]);
+    // Auto remove after animation
+    setTimeout(() => {
+      setVisualEffects(prev => prev.filter(e => e.id !== id));
+    }, 2000);
+    
+    // Play sound based on effect
+    if (type === 'money-gain') playSound('coin');
+    if (type === 'money-loss') playSound('click');
+    if (type === 'upgrade') playSound('success');
+    if (type === 'buy') playSound('coin');
+  };
+
   // --- Bankruptcy Logic ---
   
   const triggerBankruptcy = (bankruptPlayerId: string) => {
     const player = getPlayerRef(bankruptPlayerId);
     addLog(`💸 ${player.name} 资金不足，宣告破产！所有资产已被收回。`, "danger");
+    addVisualEffect(player.position, "破产!", "bankrupt");
+    playSound('error');
     
     // 1. Reset board properties owned by this player
     setBoard(prev => prev.map(t => t.owner === bankruptPlayerId ? { ...t, owner: null, level: 1 } : t));
@@ -155,6 +405,7 @@ const App: React.FC = () => {
     if (remainingPlayers.length === 1) {
         setTimeout(() => {
             addLog(`🏆 游戏结束！最终获胜者是 ${remainingPlayers[0].name}！`, "success");
+            playSound('success');
             alert(`游戏结束！${remainingPlayers[0].name} 获胜！`);
             setGameStarted(false);
         }, 1000);
@@ -169,14 +420,22 @@ const App: React.FC = () => {
         if (creditorId && remaining > 0) {
             const creditor = getPlayerRef(creditorId);
             updatePlayer(creditorId, { money: creditor.money + remaining });
+            addVisualEffect(creditor.position, `+${remaining}`, "money-gain");
             addLog(`${player.name} 破产前将剩余 ¥${remaining} 抵扣给了 ${creditor.name}。`, "warning");
         }
         triggerBankruptcy(playerId);
     } else {
         updatePlayer(playerId, { money: player.money - amount });
+        addVisualEffect(player.position, `-${amount}`, "money-loss");
+        
         if (creditorId) {
             const creditor = getPlayerRef(creditorId);
             updatePlayer(creditorId, { money: creditor.money + amount });
+            // Visual effect for creditor usually at creditor's position, but they might be elsewhere. 
+            // For clarity, we show it at player's position (transfer) or creditor's. Let's show at creditor's pos if valid.
+            if (creditor.position >= 0) {
+                 addVisualEffect(creditor.position, `+${amount}`, "money-gain");
+            }
         }
     }
   };
@@ -246,31 +505,22 @@ const App: React.FC = () => {
       return;
     }
 
-    // 1. Visual Rolling State
-    setIsRolling(true);
-    await new Promise(r => setTimeout(r, 1000)); // AI "thinking/rolling" delay
-    
-    // 2. Roll Result
-    const steps = rollDice();
-    setIsRolling(false);
-    addLog(`${ai.name} 掷出了 ${steps} 点！`, "info");
-    
-    // 3. Move
-    await movePlayer(aiId, steps);
+    // Trigger Dice Animation Sequence
+    triggerDiceRoll();
   };
 
   // Human Turn Sequence (Button Click)
   const handleHumanTurn = async () => {
     const currentPlayer = players[activePlayerIndex];
-    
+    initAudio(); // Ensure audio context is ready on interaction
+
     if (currentPlayer.isJailed) {
       addLog(`${currentPlayer.name} 在休息站，必须回答问题才能离开！`, "warning");
       triggerMathChallenge(null, () => {
         addLog("✅ 回答正确！解除休息状态。", "success");
         updatePlayer(currentPlayer.id, { isJailed: false });
-        // Optional: Let them roll immediately or wait next turn? Let's let them roll immediately for fun.
-        const steps = rollDice();
-        movePlayer(currentPlayer.id, steps);
+        // After jail break, roll immediately
+        triggerDiceRoll();
       }, () => {
         addLog("❌ 回答错误，下回合继续休息。", "danger");
         endTurn();
@@ -278,9 +528,38 @@ const App: React.FC = () => {
       return;
     }
 
+    triggerDiceRoll();
+  };
+
+  const triggerDiceRoll = () => {
+    playSound('dice'); // Changed from 'turn' to 'dice'
+    // Determine the result IMMEDIATELY so the 3D dice knows where to stop
     const steps = rollDice();
-    addLog(`${currentPlayer.name} 掷出了 ${steps} 点！`, "info");
-    await movePlayer(currentPlayer.id, steps);
+    setDiceValue(steps);
+    setPendingDiceStep(steps);
+    
+    // Start the animation
+    setIsDiceRolling(true);
+    
+    // Note: We don't need a timeout here to calculate the value anymore.
+    // The Dice3D component handles the duration (2000ms) and calls onDiceAnimationComplete.
+  };
+
+  const onDiceAnimationComplete = () => {
+    // Animation finished, stop rolling state
+    setIsDiceRolling(false);
+
+    // Only proceed if we have a pending step (avoid double triggering)
+    if (pendingDiceStep !== null) {
+      const currentPlayer = getPlayerRef(playersRef.current[activePlayerIndex].id);
+      addLog(`${currentPlayer.name} 掷出了 ${pendingDiceStep} 点！`, "info");
+      
+      // Delay slightly to let user see the dice result before moving
+      setTimeout(() => {
+          movePlayer(currentPlayer.id, pendingDiceStep);
+          // Do NOT clear diceValue here, let it persist until endTurn
+      }, 500);
+    }
   };
 
   const movePlayer = async (playerId: string, steps: number) => {
@@ -297,6 +576,7 @@ const App: React.FC = () => {
         }
 
         updatePlayer(playerId, { position: nextPos });
+        playSound('click'); // Click sound per step
         await new Promise(r => setTimeout(r, 300));
     }
     
@@ -318,7 +598,8 @@ const App: React.FC = () => {
         triggerMathChallenge(q, () => {
           // Success (Both User and AI)
           addLog(`${finalPlayer.name} 领取工资 ¥200`, "success");
-          updatePlayer(playerId, { money: finalPlayer.money + 200 }); 
+          updatePlayer(playerId, { money: finalPlayer.money + 200 });
+          addVisualEffect(0, "+200", "money-gain"); // 0 is Start
           setTimeout(() => processTile(playerId, finalPlayer.position), 500);
         }, () => {
           // Failure
@@ -330,6 +611,7 @@ const App: React.FC = () => {
              addLog(`❌ 你算错了！但是 ${finalPlayer.name} 自己算对并领了工资。`, "warning");
              addLog("📉 惩罚：你的连胜中断了！", "danger");
              updatePlayer(playerId, { money: finalPlayer.money + 200 });
+             addVisualEffect(0, "+200", "money-gain");
              setTimeout(() => processTile(playerId, finalPlayer.position), 500);
           }
         });
@@ -367,11 +649,12 @@ const App: React.FC = () => {
     // 1. Unowned -> Buy?
     if (tile.owner === null || tile.owner === undefined) {
       if (tile.price && player.money >= tile.price) {
-        // AI Logic for decision making (simulate "thinking" but user calculates)
-        if (player.isAi && Math.random() < 0.2) {
-             addLog(`${player.name} 决定不购买这块地。`, "info");
-             endTurn();
-             return;
+        
+        // --- FIX: AI Logic ---
+        // Removed the random 20% skip. AI now always attempts to buy if they have funds.
+        if (player.isAi) {
+             // Only skip if critically low (optional safety, currently greedy)
+             // We want the AI to be aggressive in this game.
         }
 
         // EVERYONE gets a math challenge to buy
@@ -409,8 +692,10 @@ const App: React.FC = () => {
 
       if (currentLevel < 3) {
         if (player.money >= upgradeCost) {
-            // AI Decision
-            if (player.isAi && player.money < upgradeCost * 1.5) {
+            // AI Decision - Relaxed constraint
+            // Fix: AI now upgrades if they have just enough money + buffer of 100
+            if (player.isAi && player.money < upgradeCost + 100) {
+                addLog(`${player.name} 决定保留资金，暂不升级。`, "info");
                 endTurn(); // AI saves money
                 return;
             }
@@ -518,6 +803,8 @@ const App: React.FC = () => {
       money: player.money - tile.price,
       properties: [...player.properties, tile.id]
     });
+    addVisualEffect(tile.id, `-${tile.price}`, "money-loss");
+    addVisualEffect(tile.id, "购买!", "buy");
     
     setBoard(prev => prev.map(t => t.id === tile.id ? { ...t, owner: playerId } : t));
     addLog(`${player.name} 花费 ¥${tile.price} 购买了 ${tile.name}！`, "success");
@@ -529,6 +816,8 @@ const App: React.FC = () => {
     if (player.money < cost) return;
 
     updatePlayer(playerId, { money: player.money - cost });
+    addVisualEffect(tile.id, `-${cost}`, "money-loss");
+    addVisualEffect(tile.id, "升级!", "upgrade");
     
     const newLevel = (tile.level || 1) + 1;
     setBoard(prev => prev.map(t => t.id === tile.id ? { ...t, level: newLevel } : t));
@@ -568,6 +857,7 @@ const App: React.FC = () => {
     triggerMathChallenge(q, () => {
         if (isGood) {
             updatePlayer(playerId, { money: player.money + evt.amount });
+            addVisualEffect(player.position, `+${evt.amount}`, "money-gain");
         } else {
             deductMoneyOrBankrupt(playerId, absAmount);
         }
@@ -592,6 +882,7 @@ const App: React.FC = () => {
              addLog("📉 惩罚：你的连胜中断了！", "danger");
              if (isGood) {
                  updatePlayer(playerId, { money: player.money + evt.amount });
+                 addVisualEffect(player.position, `+${evt.amount}`, "money-gain");
              } else {
                  deductMoneyOrBankrupt(playerId, absAmount);
              }
@@ -630,6 +921,7 @@ const App: React.FC = () => {
     triggerMathChallenge(q, () => {
          if (isGood) {
              updatePlayer(playerId, { money: player.money + amount });
+             addVisualEffect(player.position, `+${amount}`, "money-gain");
          } else {
              deductMoneyOrBankrupt(playerId, absAmount);
          }
@@ -653,6 +945,7 @@ const App: React.FC = () => {
              addLog("📉 惩罚：你的连胜中断了！", "danger");
              if (isGood) {
                  updatePlayer(playerId, { money: player.money + amount });
+                 addVisualEffect(player.position, `+${amount}`, "money-gain");
              } else {
                  deductMoneyOrBankrupt(playerId, absAmount);
              }
@@ -663,16 +956,16 @@ const App: React.FC = () => {
 
   const endTurn = () => {
     // Determine next player
-    // Note: We use the callback to ensure we get the latest state for index calc if called rapidly, 
-    // though activePlayerIndex updates are usually discrete.
-    // However, since we might need to skip bankrupt players, we loop.
+    setDiceValue(null);
+    setPendingDiceStep(null);
+    setIsDiceRolling(false);
     
     setActivePlayerIndex(prev => {
-        let nextIndex = (prev + 1) % players.length;
+        let nextIndex = (prev + 1) % playersRef.current.length;
         let attempts = 0;
         // Loop until we find a non-bankrupt player
-        while (players[nextIndex].isBankrupt && attempts < players.length) {
-            nextIndex = (nextIndex + 1) % players.length;
+        while (playersRef.current[nextIndex].isBankrupt && attempts < playersRef.current.length) {
+            nextIndex = (nextIndex + 1) % playersRef.current.length;
             attempts++;
         }
         return nextIndex;
@@ -688,6 +981,7 @@ const App: React.FC = () => {
   ) => {
     setIsQuestionLoading(true);
     setShowMathModal(true);
+    playSound('turn'); // Notification sound
     
     let question = forcedQuestion;
     if (!question) {
@@ -698,12 +992,15 @@ const App: React.FC = () => {
     setIsQuestionLoading(false);
 
     setPendingAction(() => {
-      return (isCorrect: boolean) => {
+      // Return a closure that accepts outcome AND selected option
+      return (isCorrect: boolean, selectedOption?: number) => {
         if (isCorrect) {
           setStreak(s => s + 1);
+          playSound('success'); // Correct sound
           onSuccess();
         } else {
           setStreak(0); // Reset streak regardless of who is playing
+          playSound('error'); // Error sound
           if (question) {
              setMistakes(prev => {
                 const existing = prev.find(m => m.questionType === question!.type);
@@ -712,6 +1009,17 @@ const App: React.FC = () => {
                 }
                 return [...prev, { questionType: question!.type, count: 1, timestamp: Date.now() }];
              });
+             
+             // Log detailed wrong answer
+             if (selectedOption !== undefined) {
+                 const log: WrongAnswerLog = {
+                     id: Date.now().toString() + Math.random().toString(),
+                     question: question,
+                     wrongOption: selectedOption,
+                     timestamp: Date.now()
+                 };
+                 setWrongAnswers(prev => [log, ...prev]);
+             }
           }
           onFailure();
         }
@@ -721,9 +1029,9 @@ const App: React.FC = () => {
     });
   };
 
-  const handleMathAnswer = (isCorrect: boolean) => {
+  const handleMathAnswer = (isCorrect: boolean, selectedOption?: number) => {
     if (pendingAction) {
-      pendingAction(isCorrect);
+      pendingAction(isCorrect, selectedOption);
     }
   };
 
@@ -770,8 +1078,33 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-sky-100 p-4 font-sans text-slate-800">
-      <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6 relative">
         
+        {/* Top Right Controls */}
+        <div className="absolute top-0 right-0 lg:right-4 lg:top-4 z-50 flex gap-2">
+            {/* Settings Button */}
+            <button
+                onClick={() => setShowSettings(true)}
+                className="p-3 rounded-full shadow-lg transition-all bg-white text-gray-600 hover:bg-gray-50"
+                title="语音设置"
+            >
+                <Settings className="w-6 h-6" />
+            </button>
+
+            {/* Sound Toggle Button */}
+            <button
+            onClick={() => {
+                setSoundEnabled(!soundEnabled);
+                initAudio(); // Also init on click
+            }}
+            className={`p-3 rounded-full shadow-lg transition-all ${soundEnabled ? 'bg-white text-blue-600 hover:bg-blue-50' : 'bg-gray-200 text-gray-500 hover:bg-gray-300'}`}
+            title={soundEnabled ? "关闭声音" : "开启声音"}
+            >
+            {soundEnabled ? <Volume2 className="w-6 h-6" /> : <VolumeX className="w-6 h-6" />}
+            </button>
+        </div>
+
+
         {/* Left Panel: Player Stats */}
         <div className="lg:col-span-3 space-y-4">
           {/* P1 Card */}
@@ -833,20 +1166,30 @@ const App: React.FC = () => {
             </div>
           )}
 
-          {/* Mistake Stats */}
-          {mistakes.length > 0 && (
+          {/* Mistake Stats & Button */}
+          {(mistakes.length > 0 || wrongAnswers.length > 0) && (
              <div className="bg-orange-50 rounded-2xl p-4 shadow-sm border border-orange-200">
-                <h3 className="text-orange-800 font-bold text-sm flex items-center mb-2">
-                   <AlertTriangle className="w-4 h-4 mr-1"/> 学习重点
+                <h3 className="text-orange-800 font-bold text-sm flex items-center justify-between mb-3">
+                   <div className="flex items-center"><AlertTriangle className="w-4 h-4 mr-1"/> 学习重点</div>
                 </h3>
-                <div className="flex flex-wrap gap-2">
+                
+                {/* Stats Tags */}
+                <div className="flex flex-wrap gap-2 mb-4">
                    {mistakes.sort((a,b) => b.count - a.count).slice(0, 3).map((m, i) => (
-                      <span key={i} className="text-xs bg-white text-orange-600 px-2 py-1 rounded border border-orange-100">
+                      <span key={i} className="text-xs bg-white text-orange-600 px-2 py-1 rounded border border-orange-100 font-medium">
                         {m.questionType === 'MUL' ? '乘法' : m.questionType === 'DIV' ? '除法' : m.questionType === 'ADD' ? '加法' : '减法'}
                         <span className="ml-1 font-bold">x{m.count}</span>
                       </span>
                    ))}
                 </div>
+
+                {/* Review Button */}
+                <button 
+                  onClick={() => setShowMistakeModal(true)}
+                  className="w-full bg-white hover:bg-orange-100 text-orange-700 border border-orange-200 font-bold py-2 px-4 rounded-xl text-sm flex items-center justify-center transition-colors"
+                >
+                  <BookOpen className="w-4 h-4 mr-2" /> 查看错题本 ({wrongAnswers.length})
+                </button>
              </div>
           )}
         </div>
@@ -859,7 +1202,12 @@ const App: React.FC = () => {
             currentPlayerId={currentPlayer.id} 
             upgradingTileId={upgradingTileId}
             onRollDice={handleHumanTurn}
-            isAiRolling={isRolling && currentPlayer.isAi}
+            isAiRolling={isDiceRolling && currentPlayer.isAi}
+            visualEffects={visualEffects}
+            // New 3D Dice Props
+            diceValue={diceValue}
+            isDiceRolling={isDiceRolling}
+            onDiceAnimationComplete={onDiceAnimationComplete}
           />
         </div>
 
@@ -890,13 +1238,165 @@ const App: React.FC = () => {
 
       </div>
 
-      {/* Modals */}
+      {/* Math Challenge Modal */}
       {showMathModal && (
         <MathChallenge 
           question={currentQuestion} 
           isLoading={isQuestionLoading}
           onAnswer={handleMathAnswer} 
         />
+      )}
+
+      {/* Voice Settings Modal */}
+      {showSettings && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-6 animate-fadeIn">
+               <div className="flex justify-between items-center mb-6">
+                   <h2 className="text-xl font-bold text-gray-800 flex items-center">
+                       <Settings className="w-5 h-5 mr-2" /> 语音设置
+                   </h2>
+                   <button onClick={() => setShowSettings(false)} className="text-gray-400 hover:text-gray-600">
+                       <X className="w-6 h-6" />
+                   </button>
+               </div>
+               
+               <div className="space-y-6">
+                   {/* Voice Select */}
+                   <div>
+                       <label className="block text-sm font-bold text-gray-700 mb-2">选择声音</label>
+                       <select 
+                           className="w-full p-3 border rounded-xl bg-gray-50 text-gray-700 focus:ring-2 focus:ring-blue-400 outline-none"
+                           value={voiceConfig.voiceName}
+                           onChange={(e) => setVoiceConfig({...voiceConfig, voiceName: e.target.value})}
+                       >
+                           {availableVoices.map((v) => (
+                               <option key={v.name} value={v.name}>
+                                   {v.name} {v.lang ? `(${v.lang})` : ''}
+                               </option>
+                           ))}
+                           {availableVoices.length === 0 && <option>未检测到语音包</option>}
+                       </select>
+                   </div>
+                   
+                   {/* Rate Slider */}
+                   <div>
+                       <div className="flex justify-between mb-2">
+                           <label className="text-sm font-bold text-gray-700">语速</label>
+                           <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{voiceConfig.rate.toFixed(1)}x</span>
+                       </div>
+                       <input 
+                           type="range" min="0.5" max="2.0" step="0.1"
+                           className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                           value={voiceConfig.rate}
+                           onChange={(e) => setVoiceConfig({...voiceConfig, rate: parseFloat(e.target.value)})}
+                       />
+                       <div className="flex justify-between text-xs text-gray-400 mt-1">
+                           <span>慢</span>
+                           <span>正常</span>
+                           <span>快</span>
+                       </div>
+                   </div>
+
+                    {/* Pitch Slider */}
+                   <div>
+                       <div className="flex justify-between mb-2">
+                           <label className="text-sm font-bold text-gray-700">音调</label>
+                           <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{voiceConfig.pitch.toFixed(1)}</span>
+                       </div>
+                       <input 
+                           type="range" min="0.5" max="2.0" step="0.1"
+                           className="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                           value={voiceConfig.pitch}
+                           onChange={(e) => setVoiceConfig({...voiceConfig, pitch: parseFloat(e.target.value)})}
+                       />
+                       <div className="flex justify-between text-xs text-gray-400 mt-1">
+                           <span>低沉</span>
+                           <span>正常</span>
+                           <span>尖细</span>
+                       </div>
+                   </div>
+
+                   {/* Test Button */}
+                   <button 
+                       onClick={testVoice}
+                       className="w-full py-3 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-xl font-bold flex items-center justify-center transition-colors"
+                   >
+                       <PlayCircle className="w-5 h-5 mr-2" /> 试听当前设置
+                   </button>
+               </div>
+           </div>
+        </div>
+      )}
+
+      {/* Mistake Review Modal */}
+      {showMistakeModal && (
+        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
+           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col overflow-hidden border-4 border-orange-200">
+              {/* Header */}
+              <div className="bg-orange-100 p-4 border-b border-orange-200 flex items-center justify-between">
+                 <div className="flex items-center text-orange-800 font-bold text-xl">
+                    <BookOpen className="w-6 h-6 mr-2" /> 错题本
+                 </div>
+                 <button 
+                   onClick={() => setShowMistakeModal(false)}
+                   className="p-2 hover:bg-orange-200 rounded-full transition-colors text-orange-800"
+                 >
+                    <X className="w-6 h-6" />
+                 </button>
+              </div>
+
+              {/* Content */}
+              <div className="overflow-y-auto p-6 space-y-6 bg-orange-50/50 flex-1">
+                 {wrongAnswers.length === 0 ? (
+                    <div className="text-center py-10 text-gray-400">
+                       <CheckCircle2 className="w-16 h-16 mx-auto mb-4 text-green-400 opacity-50" />
+                       <p className="text-lg">太棒了！目前没有错题记录。</p>
+                    </div>
+                 ) : (
+                    wrongAnswers.map((log) => (
+                       <div key={log.id} className="bg-white rounded-xl p-5 shadow-sm border border-gray-100 relative">
+                          <div className="absolute top-4 right-4 text-xs font-mono text-gray-400">
+                            {new Date(log.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                          </div>
+                          <div className="mb-4">
+                             <span className="inline-block bg-gray-100 text-gray-600 text-xs px-2 py-1 rounded mb-2 font-bold">
+                                {log.question.type === 'ADD' ? '加法' : log.question.type === 'SUB' ? '减法' : log.question.type === 'MUL' ? '乘法' : '除法'}
+                             </span>
+                             <p className="text-lg font-medium text-gray-800 leading-relaxed whitespace-pre-wrap">
+                                {log.question.question}
+                             </p>
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-4 mb-4">
+                             <div className="bg-red-50 border border-red-100 p-3 rounded-lg flex items-center text-red-700">
+                                <XCircle className="w-5 h-5 mr-2 shrink-0" />
+                                <div>
+                                   <div className="text-xs text-red-400 font-bold uppercase">你的答案</div>
+                                   <div className="font-mono font-bold text-lg">{log.wrongOption}</div>
+                                </div>
+                             </div>
+                             <div className="bg-green-50 border border-green-100 p-3 rounded-lg flex items-center text-green-700">
+                                <CheckCircle2 className="w-5 h-5 mr-2 shrink-0" />
+                                <div>
+                                   <div className="text-xs text-green-400 font-bold uppercase">正确答案</div>
+                                   <div className="font-mono font-bold text-lg">{log.question.answer}</div>
+                                </div>
+                             </div>
+                          </div>
+
+                          <div className="bg-blue-50 p-3 rounded-lg text-sm text-blue-800 border border-blue-100">
+                             <span className="font-bold mr-1">💡 解析:</span> {log.question.explanation}
+                          </div>
+                       </div>
+                    ))
+                 )}
+              </div>
+              
+              <div className="p-4 bg-white border-t border-gray-100 text-center">
+                 <p className="text-xs text-gray-400">温故而知新，常回来看看哦！</p>
+              </div>
+           </div>
+        </div>
       )}
     </div>
   );
