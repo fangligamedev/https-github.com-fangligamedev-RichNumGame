@@ -51,7 +51,7 @@ const App: React.FC = () => {
   const [showMistakeModal, setShowMistakeModal] = useState(false); // UI state for review modal
 
   // Refs
-  const logsEndRef = useRef<HTMLDivElement>(null);
+  const logsContainerRef = useRef<HTMLDivElement>(null);
   const playersRef = useRef(players); // Keep track of latest players state
   const audioContextRef = useRef<AudioContext | null>(null);
 
@@ -241,7 +241,9 @@ const App: React.FC = () => {
   // --- Effects ---
 
   useEffect(() => {
-    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (logsContainerRef.current) {
+      logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
+    }
   }, [logs]);
 
   useEffect(() => {
@@ -594,10 +596,8 @@ const App: React.FC = () => {
              addLog("❌ 算错了！银行柜员拒绝发放工资。", "danger");
              setTimeout(() => processTile(playerId, finalPlayer.position), 500);
           } else {
-             addLog(`❌ 你算错了！但是 ${finalPlayer.name} 自己算对并领了工资。`, "warning");
-             addLog("📉 惩罚：你的连胜中断了！", "danger");
-             updatePlayer(playerId, { money: finalPlayer.money + 200 });
-             addVisualEffect(0, "+200", "money-gain");
+             addLog(`❌ 你算错了！${finalPlayer.name} 没能领到工资。`, "danger");
+             addLog("📉 惩罚：连胜中断，且无法领取本回合奖励。", "danger");
              setTimeout(() => processTile(playerId, finalPlayer.position), 500);
           }
         });
@@ -655,9 +655,9 @@ const App: React.FC = () => {
                addLog("❌ 算错了，交易取消！失去购买机会。", "danger");
                endTurn();
            } else {
-               addLog(`❌ 你算错了！${player.name} 自己计算完成了购买。`, "warning");
-               addLog("📉 惩罚：你的连胜中断了！", "danger");
-               buyProperty(playerId, tile);
+               addLog(`❌ 你算错了！${player.name} 失去了购买机会。`, "danger");
+               addLog("📉 惩罚：连胜中断，交易取消。", "danger");
+               endTurn();
            }
         });
 
@@ -701,9 +701,9 @@ const App: React.FC = () => {
                         addLog("❌ 算错了，升级取消。", "danger");
                         endTurn();
                     } else {
-                        addLog(`❌ 你算错了！${player.name} 自己计算并升级了。`, "warning");
-                        addLog("📉 惩罚：你的连胜中断了！", "danger");
-                        upgradeProperty(playerId, tile, upgradeCost);
+                        addLog(`❌ 你算错了！${player.name} 失去了升级机会。`, "danger");
+                        addLog("📉 惩罚：连胜中断，升级取消。", "danger");
+                        endTurn();
                     }
                 });
             } else {
@@ -867,13 +867,14 @@ const App: React.FC = () => {
                  endTurn();
              }
          } else {
-             addLog(`❌ 你算错了！${player.name} 自己处理了。`, "warning");
-             addLog("📉 惩罚：你的连胜中断了！", "danger");
-             if (evt.isGain) {
-                 updatePlayer(playerId, { money: player.money + calculatedAmount });
-                 addVisualEffect(player.position, `+${calculatedAmount}`, "money-gain");
-             } else {
+             addLog(`❌ 你算错了！${player.name} 没能处理好运气卡。`, "danger");
+             addLog("📉 惩罚：连胜中断。", "danger");
+             if (!evt.isGain) {
+                 // Even if failed, you still pay penalties, but rewards are lost
+                 addLog("损失还是要承担的！", "danger");
                  deductMoneyOrBankrupt(playerId, calculatedAmount);
+             } else {
+                 addLog("奖励被没收了！", "danger");
              }
              endTurn();
          }
@@ -914,7 +915,7 @@ const App: React.FC = () => {
                  addLog("❌ 算错了，税还是要交的。", "danger");
                  deductMoneyOrBankrupt(playerId, amount);
              } else {
-                 addLog(`❌ 你算错了！${player.name} 自动交税了。`, "warning");
+                 addLog(`❌ 你算错了！${player.name} 被强制执行了。`, "danger");
                  deductMoneyOrBankrupt(playerId, amount);
              }
              endTurn();
@@ -939,8 +940,7 @@ const App: React.FC = () => {
              if (isUser) {
                  addLog("❌ 算错了，利息被没收。", "danger");
              } else {
-                 addLog(`❌ 你算错了！${player.name} 领走了利息。`, "warning");
-                 updatePlayer(playerId, { money: player.money + amount });
+                 addLog(`❌ 你算错了！${player.name} 的利息被没收了。`, "danger");
              }
              endTurn();
        });
@@ -1213,7 +1213,7 @@ const App: React.FC = () => {
             <div className="bg-gray-50 p-3 border-b border-gray-200 font-bold text-gray-600 flex items-center">
               <History className="w-4 h-4 mr-2" /> 游戏记录
             </div>
-            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+            <div className="flex-1 overflow-y-auto p-4 space-y-2" ref={logsContainerRef}>
               {logs.map((log, index) => (
                 <div 
                   key={index} 
@@ -1227,7 +1227,6 @@ const App: React.FC = () => {
                   {log.message}
                 </div>
               ))}
-              <div ref={logsEndRef} />
             </div>
           </div>
         </div>
@@ -1240,6 +1239,7 @@ const App: React.FC = () => {
           question={currentQuestion} 
           isLoading={isQuestionLoading}
           onAnswer={handleMathAnswer} 
+          playerId={currentPlayer.id}
         />
       )}
 

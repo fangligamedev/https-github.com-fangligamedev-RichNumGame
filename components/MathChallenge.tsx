@@ -6,18 +6,43 @@ interface MathChallengeProps {
   question: MathQuestion | null;
   onAnswer: (isCorrect: boolean, selectedOption?: number) => void;
   isLoading: boolean;
+  playerId?: string;
 }
 
-const MathChallenge: React.FC<MathChallengeProps> = ({ question, onAnswer, isLoading }) => {
+const MathChallenge: React.FC<MathChallengeProps> = ({ question, onAnswer, isLoading, playerId }) => {
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [showResult, setShowResult] = useState(false);
   const [isCorrect, setIsCorrect] = useState(false);
+
+  // Theme configuration based on player
+  const getTheme = () => {
+    if (playerId === 'P1') return {
+      bg: 'bg-blue-50',
+      border: 'ring-blue-300',
+      headerBg: 'bg-blue-100',
+      headerText: 'text-blue-700'
+    };
+    if (playerId === 'P2') return {
+      bg: 'bg-emerald-50',
+      border: 'ring-emerald-300',
+      headerBg: 'bg-emerald-100',
+      headerText: 'text-emerald-700'
+    };
+    return { // AI or Fallback
+      bg: 'bg-purple-50',
+      border: 'ring-purple-300',
+      headerBg: 'bg-purple-100',
+      headerText: 'text-purple-700'
+    };
+  };
+
+  const theme = getTheme();
 
   if (isLoading || !question) {
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 backdrop-blur-sm">
         <div className="bg-white p-8 rounded-2xl shadow-2xl flex flex-col items-center animate-pulse border-4 border-blue-200">
-          <Brain className="w-16 h-16 text-blue-500 mb-4 animate-bounce" />
+          <Brain className={`w-16 h-16 ${theme.headerText} mb-4 animate-bounce`} />
           <h2 className="text-2xl font-bold text-gray-700">正在生成题目...</h2>
           <p className="text-gray-500">老师机器人正在思考适合你的问题</p>
         </div>
@@ -45,14 +70,14 @@ const MathChallenge: React.FC<MathChallengeProps> = ({ question, onAnswer, isLoa
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4 backdrop-blur-sm">
       {/* Container: Landscape oriented (max-w-4xl), Flex Row on Desktop */}
-      <div className="bg-white max-w-4xl w-full rounded-3xl shadow-2xl overflow-hidden border-8 border-white ring-4 ring-blue-300 transform transition-all scale-100 flex flex-col md:flex-row min-h-[450px]">
+      <div className={`bg-white max-w-4xl w-full rounded-3xl shadow-2xl overflow-hidden border-8 border-white ring-4 ${theme.border} transform transition-all scale-100 flex flex-col md:flex-row min-h-[450px]`}>
         
         {/* Left Side: Question Area (60% width) */}
-        <div className="md:w-3/5 bg-slate-50 p-8 flex flex-col relative">
+        <div className={`md:w-3/5 ${theme.bg} p-8 flex flex-col relative`}>
             {/* Header Tag */}
-            <div className="absolute top-4 left-4 bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm font-bold flex items-center shadow-sm">
+            <div className={`absolute top-4 left-4 ${theme.headerBg} ${theme.headerText} px-3 py-1 rounded-full text-sm font-bold flex items-center shadow-sm`}>
                 <Calculator className="w-4 h-4 mr-1" />
-                数学挑战
+                {playerId === 'P1' ? '我的挑战' : playerId === 'P2' ? '朋友的挑战' : '机器人的挑战'}
             </div>
 
             <div className="flex-1 flex flex-col justify-center items-center text-center mt-6">
