@@ -28,41 +28,40 @@ const GameBoard: React.FC<GameBoardProps> = ({
     isDiceRolling = false,
     onDiceAnimationComplete
 }) => {
-  // Logic for a 9x9 Grid (32 Tiles)
-  // Grid Indices: 1 to 9
+  // Logic for a Horizontal Layout (11 cols x 7 rows = 32 Tiles)
   const getGridStyle = (index: number) => {
-    // Top Row (0-8): Row 1, Col 1 -> 9
-    if (index >= 0 && index <= 8) {
+    // Top Row (0-10): Row 1, Col 1 -> 11
+    if (index >= 0 && index <= 10) {
         return { gridRow: 1, gridColumn: index + 1 };
     }
-    // Right Col (9-15): Col 9, Row 2 -> 8
-    if (index >= 9 && index <= 15) {
-        return { gridRow: index - 7, gridColumn: 9 };
+    // Right Col (11-15): Col 11, Row 2 -> 6
+    if (index >= 11 && index <= 15) {
+        return { gridRow: index - 9, gridColumn: 11 };
     }
-    // Bottom Row (16-24): Row 9, Col 9 -> 1
-    if (index >= 16 && index <= 24) {
-        return { gridRow: 9, gridColumn: 9 - (index - 16) };
+    // Bottom Row (16-26): Row 7, Col 11 -> 1
+    if (index >= 16 && index <= 26) {
+        return { gridRow: 7, gridColumn: 11 - (index - 16) };
     }
-    // Left Col (25-31): Col 1, Row 8 -> 2
-    if (index >= 25 && index <= 31) {
-        return { gridRow: 9 - (index - 24), gridColumn: 1 };
+    // Left Col (27-31): Col 1, Row 6 -> 2
+    if (index >= 27 && index <= 31) {
+        return { gridRow: 33 - index, gridColumn: 1 };
     }
     return {};
   };
 
   const renderIcon = (type: TileType, name: string) => {
-    if (type === TileType.START) return <span className="text-3xl filter drop-shadow">🏁</span>;
-    if (type === TileType.BANK) return <DollarSign className="w-6 h-6 text-green-700 drop-shadow-sm" />;
-    if (type === TileType.CHANCE) return <span className="text-2xl filter drop-shadow">❓</span>;
-    if (type === TileType.JAIL) return <Ban className="w-6 h-6 text-gray-600 drop-shadow-sm" />;
+    if (type === TileType.START) return <span className="text-4xl filter drop-shadow">🏁</span>;
+    if (type === TileType.BANK) return <DollarSign className="w-8 h-8 text-green-700 drop-shadow-sm" />;
+    if (type === TileType.CHANCE) return <span className="text-3xl filter drop-shadow">❓</span>;
+    if (type === TileType.JAIL) return <Ban className="w-8 h-8 text-gray-600 drop-shadow-sm" />;
     
     // Landmarks
-    if (name.includes('东方明珠') || name.includes('中心') || name.includes('大厦')) return <Landmark className="w-6 h-6 text-red-700 drop-shadow-md" />;
-    if (name.includes('迪士尼') || name.includes('乐园') || name.includes('欢乐谷')) return <FerrisWheel className="w-6 h-6 text-purple-600 drop-shadow-md" />;
-    if (name.includes('公园') || name.includes('动物园')) return <Trees className="w-6 h-6 text-green-600 drop-shadow-md" />;
-    if (name.includes('外滩') || name.includes('海')) return <Palmtree className="w-6 h-6 text-blue-600 drop-shadow-md" />;
+    if (name.includes('东方明珠') || name.includes('中心') || name.includes('大厦')) return <Landmark className="w-8 h-8 text-red-700 drop-shadow-md" />;
+    if (name.includes('迪士尼') || name.includes('乐园') || name.includes('欢乐谷')) return <FerrisWheel className="w-8 h-8 text-purple-600 drop-shadow-md" />;
+    if (name.includes('公园') || name.includes('动物园')) return <Trees className="w-8 h-8 text-green-600 drop-shadow-md" />;
+    if (name.includes('外滩') || name.includes('海')) return <Palmtree className="w-8 h-8 text-blue-600 drop-shadow-md" />;
     
-    return <Building2 className="w-6 h-6 text-gray-500 opacity-60" />;
+    return <Building2 className="w-8 h-8 text-gray-500 opacity-60" />;
   };
 
   const currentPlayer = players.find(p => p.id === currentPlayerId);
@@ -91,28 +90,29 @@ const GameBoard: React.FC<GameBoardProps> = ({
 
   return (
     <div 
-      className="relative w-full max-w-4xl aspect-square mx-auto p-4 rounded-[2rem] shadow-2xl border-8 border-white/50 ring-4 ring-blue-200 bg-cover bg-center transition-all duration-500"
+      className="relative w-full max-w-6xl mx-auto p-4 rounded-[2rem] shadow-2xl border-8 border-white/50 ring-4 ring-blue-200 bg-cover bg-center transition-all duration-500"
       style={{
         backgroundImage: `url('https://images.unsplash.com/photo-1548919973-5cef591cdbc9?q=80&w=2000&auto=format&fit=crop')`, // Shanghai Skyline
         backgroundBlendMode: 'overlay',
-        backgroundColor: 'rgba(230, 242, 255, 0.9)'
+        backgroundColor: 'rgba(230, 242, 255, 0.9)',
+        aspectRatio: '16/10'
       }}
     >
       <div className="absolute inset-0 bg-gradient-to-b from-blue-100/40 to-white/60 rounded-[1.5rem] backdrop-blur-[2px]"></div>
 
-      {/* Grid Update: 9 cols x 9 rows for 32 tiles */}
-      <div className="grid grid-cols-9 grid-rows-9 gap-1.5 h-full w-full relative z-10">
+      {/* Grid Update: 11 cols x 7 rows for 32 tiles */}
+      <div className="grid grid-cols-11 grid-rows-7 gap-2 h-full w-full relative z-10">
         
-        {/* Center Logo Area & Button / Dice - Expanded to fit the hole (Cols 2-8, Rows 2-8) */}
-        <div className="col-start-2 col-end-9 row-start-2 row-end-9 bg-white/70 backdrop-blur-md rounded-3xl flex flex-col items-center justify-center p-6 text-center relative overflow-hidden shadow-[inset_0_2px_10px_rgba(0,0,0,0.05)] border border-white/60">
+        {/* Center Logo Area & Button / Dice - Expanded to fit the hole (Cols 2-10, Rows 2-6) */}
+        <div className="col-start-2 col-end-11 row-start-2 row-end-7 bg-white/70 backdrop-blur-md rounded-3xl flex flex-col items-center justify-center p-8 text-center relative overflow-hidden shadow-[inset_0_2px_10px_rgba(0,0,0,0.05)] border border-white/60">
             
             {/* Title - Only show if dice is NOT rolling */}
             {!showDice && (
               <>
-                <h1 className="text-3xl md:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600 tracking-wider drop-shadow-sm mb-2">上海大冒险</h1>
-                <p className="text-slate-500 font-bold mb-6 text-xs md:text-sm tracking-widest">完整版 32格大地图</p>
+                <h1 className="text-4xl md:text-6xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-indigo-600 tracking-wider drop-shadow-sm mb-2">上海大冒险</h1>
+                <p className="text-slate-500 font-bold mb-6 text-sm md:text-lg tracking-widest">完整版 32格大地图</p>
                 
-                <div className={`mb-4 md:mb-8 px-6 py-2 rounded-full text-xs md:text-sm font-bold shadow-sm transition-colors duration-300 flex items-center
+                <div className={`mb-4 md:mb-8 px-8 py-3 rounded-full text-sm md:text-lg font-bold shadow-sm transition-colors duration-300 flex items-center
                   ${currentPlayer?.isAi ? 'bg-purple-100 text-purple-700 border border-purple-200' : 'bg-green-100 text-green-700 border border-green-200'}`}>
                   当前回合: {currentPlayer?.name || '...'}
                 </div>
@@ -213,9 +213,9 @@ const GameBoard: React.FC<GameBoardProps> = ({
                   </div>
                 )}
 
-                {/* Tile Name - Improved wrapping */}
-                <div className="w-full h-8 flex items-center justify-center bg-white/40 backdrop-blur-sm rounded-t z-10 px-0.5">
-                    <span className="text-[8px] md:text-[9px] font-bold text-slate-800 leading-[1.1] text-center whitespace-normal break-words line-clamp-2">
+                {/* Tile Name - Improved font size */}
+                <div className="w-full h-10 flex items-center justify-center bg-white/40 backdrop-blur-sm rounded-t z-10 px-1">
+                    <span className="text-[10px] md:text-[14px] font-bold text-slate-800 leading-[1.2] text-center whitespace-normal break-words line-clamp-2">
                         {tile.name}
                     </span>
                 </div>
@@ -227,27 +227,27 @@ const GameBoard: React.FC<GameBoardProps> = ({
 
                 {/* Price */}
                 {tile.price && (
-                    <div className="text-[8px] font-mono font-bold text-slate-600 bg-white/50 px-1.5 py-0.5 rounded-full mb-0.5 z-10 shadow-sm border border-white/50">
+                    <div className="text-[10px] md:text-[12px] font-mono font-bold text-slate-700 bg-white/60 px-2 py-0.5 rounded-full mb-1 z-10 shadow-sm border border-white/50">
                         ¥{tile.price}
                     </div>
                 )}
 
-                {/* Owner Marker - Smaller dots */}
+                {/* Owner Marker - Larger and clearer */}
                 {tile.owner && (
-                    <div className={`absolute -top-1.5 -right-1.5 w-5 h-5 flex items-center justify-center rounded-full shadow-md border border-white z-20
+                    <div className={`absolute -top-2 -right-2 w-6 h-6 md:w-8 md:h-8 flex items-center justify-center rounded-full shadow-md border-2 border-white z-20
                         ${tile.owner === 'P1' ? 'bg-blue-500' : tile.owner === 'P2' ? 'bg-green-500' : 'bg-purple-500'}
                     `}>
-                        <span className="text-[8px] text-white">
+                        <span className="text-xs md:text-sm text-white">
                            {tile.owner === 'P1' ? '🐼' : tile.owner === 'P2' ? '🐰' : '🤖'}
                         </span>
                     </div>
                 )}
 
-                {/* Stars */}
+                {/* Stars - Larger */}
                 {tile.level && tile.level > 1 && (
-                    <div className="absolute top-0.5 left-0.5 flex flex-col gap-0 z-10">
+                    <div className="absolute top-1 left-1 flex flex-col gap-0.5 z-10">
                         {[...Array(tile.level - 1)].map((_, i) => (
-                            <span key={i} className="text-[8px] filter drop-shadow">⭐</span>
+                            <span key={i} className="text-[10px] md:text-sm filter drop-shadow">⭐</span>
                         ))}
                     </div>
                 )}

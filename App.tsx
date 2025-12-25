@@ -1073,11 +1073,11 @@ const App: React.FC = () => {
   const ai = players.find(p => p.id === 'AI');
 
   return (
-    <div className="min-h-screen bg-sky-100 p-4 font-sans text-slate-800">
-      <div className="max-w-6xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6 relative">
+    <div className="min-h-screen bg-sky-100 p-2 md:p-4 font-sans text-slate-800">
+      <div className="max-w-[1600px] mx-auto grid grid-cols-1 lg:grid-cols-12 gap-4 relative">
         
         {/* Top Right Controls */}
-        <div className="absolute top-0 right-0 lg:right-4 lg:top-4 z-50 flex gap-2">
+        <div className="absolute top-2 right-2 z-50 flex gap-2">
             {/* Settings Button */}
             <button
                 onClick={() => setShowSettings(true)}
@@ -1102,7 +1102,7 @@ const App: React.FC = () => {
 
 
         {/* Left Panel: Player Stats */}
-        <div className="lg:col-span-3 space-y-4">
+        <div className="lg:col-span-2 space-y-4">
           {/* P1 Card */}
           {p1 && (
             <div className={`bg-white rounded-2xl p-4 shadow-lg border-l-8 transition-all ${p1.isBankrupt ? 'grayscale opacity-60 border-gray-400' : (activePlayerIndex === players.indexOf(p1) ? 'border-blue-500 ring-2 ring-blue-200' : 'border-gray-200')}`}>
@@ -1190,8 +1190,8 @@ const App: React.FC = () => {
           )}
         </div>
 
-        {/* Center: Game Board */}
-        <div className="lg:col-span-6 flex flex-col justify-center">
+        {/* Center: Game Board - Wider for Landscape */}
+        <div className="lg:col-span-8 flex flex-col justify-center">
           <GameBoard 
             tiles={board} 
             players={players} 
@@ -1208,7 +1208,7 @@ const App: React.FC = () => {
         </div>
 
         {/* Right Panel: Logs */}
-        <div className="lg:col-span-3">
+        <div className="lg:col-span-2">
           <div className="bg-white rounded-2xl shadow-lg overflow-hidden h-96 flex flex-col">
             <div className="bg-gray-50 p-3 border-b border-gray-200 font-bold text-gray-600 flex items-center">
               <History className="w-4 h-4 mr-2" /> 游戏记录
